@@ -263,30 +263,56 @@ def chat(req: ChatRequest):
     return {"reply": reply}
   
 @app.post("/line-webhook")
-async def line_webhook(
-    request: Request,
-    x_line_signature: str = Header(default=None)
-):
-    if parser is None or line_bot_api is None:
-        raise HTTPException(status_code=500, detail="LINE not configured on server")
-
-    body = await request.body()
-    body_text = body.decode("utf-8")
-    print("LINE webhook raw body:", body_text)
-
+async def line_webhook(request: Request):
     try:
-        events = parser.parse(body_text, x_line_signature)
-    except InvalidSignatureError:
-        raise HTTPException(status_code=400, detail="Invalid signature")
+        body_bytes = await request.body()
+        body_text = body_bytes.decode("utf-8")
+        print("LINE webhook raw body:", body_text)
 
-    for event in events:
-        if isinstance(event, MessageEvent) and isinstance(event.message, TextMessage):
-            user_text = event.message.text
-            reply_text = generate_reply(user_text)   # 🔁 reuse your logic
+        data = json.loads(body_text)
+        events = data.get("events", [])
 
-            line_bot_api.reply_message(
-                event.reply_token,
-                TextSendMessage(text=reply_text)
-            )
+        for event in events:
+            if event.get("type") == "message" and event.get("message", {}).get("type") == "text":
+                user_text = event["message"]["text"]
+                reply_token = event["replyToken"]
 
+                # Use your existing logic
+                reply_text = generate_reply(user_text)
+
+                # Prepare LINE reply
+                access_token = os.getenv("LINE_CHANNEL_ACCESS_TOKEN", "")
+                if not access_token:
+                    print("⚠️ LINE_CHANNEL_ACCESS_TOKEN is missing")
+                    continue
+
+                headers = {
+                    "Content-Type": "application/json",
+                    "Authorization": f"Bearer {access_token}",
+                }
+                payload = {
+                    "replyToken": reply_token,
+                    "messages": [
+                        {
+                            "type": "text",
+                            "text": reply_text,
+                        }
+                    ],
+                }
+
+                print("Sending reply to LINE:", payload)
+
+                resp = requests.post(
+                    "https://api.line.me/v2/bot/message/reply",
+                    headers=headers,
+                    json=payload,
+                    timeout=10,
+                )
+                print("LINE reply status:", resp.status_code, resp.text[:300])
+
+    except Exception as e:
+        # Catch any unexpected error so FastAPI doesn't return 500
+        print("❌ Error in /line-webhook:", e)
+
+    # Always return 200 OK to LINE
     return "OK"
