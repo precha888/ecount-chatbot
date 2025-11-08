@@ -8,6 +8,10 @@ import requests
 from datetime import datetime
 import json
 
+from linebot import LineBotApi, WebhookParser
+from linebot.models import MessageEvent, TextMessage, TextSendMessage
+from linebot.exceptions import InvalidSignatureError
+
 app = FastAPI()
 
 # ---------- File path ----------
@@ -18,6 +22,13 @@ DATA_FILE = os.path.join(os.path.dirname(__file__), "data", "items_master.csv")
 ECOUNT_BASE_URL = "https://sboapiia.ecount.com/OAPI/V2"
 # TODO: put your real SESSION_ID from Ecount API login here
 ECOUNT_SESSION_ID = "3930373738337c505245434841:IA-EStEUmGRPMqcE"
+
+
+LINE_CHANNEL_SECRET = os.getenv("0ca62460a116b780a7831b6f0f19f4d7", "")
+LINE_CHANNEL_ACCESS_TOKEN = os.getenv("/OhTZkqMfVDM19ksNB/Tm94G+gRqkf9bJcuxrPF8X1WdDODU/64p2r+CfIo4GILGLjWdzhzWgSC62d+cCpE/yysC3mZsKDlZ8GvKLz4DAguVysFDIhyMk0IcN321RXLLvnLFiB2ARKyB+TrUrg+KfAdB04t89/1O/w1cDnyilFU=", "")
+
+line_bot_api = LineBotApi(LINE_CHANNEL_ACCESS_TOKEN) if LINE_CHANNEL_ACCESS_TOKEN else None
+parser = WebhookParser(LINE_CHANNEL_SECRET) if LINE_CHANNEL_SECRET else None
 
 # ---------- In-memory product list ----------
 products: list[dict] = []
@@ -252,10 +263,30 @@ def chat(req: ChatRequest):
     return {"reply": reply}
   
 @app.post("/line-webhook")
-async def line_webhook(request: Request):
-    # For now we only log the body and always return 200 OK
-    body = await request.body()
-    print("LINE webhook body:", body.decode("utf-8"))
-    return "OK"
+async def line_webhook(
+    request: Request,
+    x_line_signature: str = Header(default=None)
+):
+    if parser is None or line_bot_api is None:
+        raise HTTPException(status_code=500, detail="LINE not configured on server")
 
-    return {"reply": reply}
+    body = await request.body()
+    body_text = body.decode("utf-8")
+    print("LINE webhook raw body:", body_text)
+
+    try:
+        events = parser.parse(body_text, x_line_signature)
+    except InvalidSignatureError:
+        raise HTTPException(status_code=400, detail="Invalid signature")
+
+    for event in events:
+        if isinstance(event, MessageEvent) and isinstance(event.message, TextMessage):
+            user_text = event.message.text
+            reply_text = generate_reply(user_text)   # 🔁 reuse your logic
+
+            line_bot_api.reply_message(
+                event.reply_token,
+                TextSendMessage(text=reply_text)
+            )
+
+    return "OK"
