@@ -189,6 +189,13 @@ class ChatRequest(BaseModel):
 
 # ---------- Endpoints ----------
 
+@app.get("/")
+def root():
+    return {
+        "status": "ok",
+        "message": "Ecount chatbot is running. Visit /docs for the API, or POST /chat."
+    }
+
 @app.get("/health")
 def health():
     return {"status": "ok", "products_loaded": len(products)}
