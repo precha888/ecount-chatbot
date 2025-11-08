@@ -1,0 +1,7 @@
+echo "__pycache__/
+*.pyc
+.env
+.vscode/
+.idea/
+*.db
+" > .gitignore
