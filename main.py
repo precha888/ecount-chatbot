@@ -177,49 +177,22 @@ def get_price_and_stock(item_code: str):
     stock = get_stock_from_ecount(item_code)
     return price, stock
 
-
-# ---------- Load CSV at startup ----------
-load_products()
-
-# ---------- API models ----------
-
-class ChatRequest(BaseModel):
-    message: str
-
-
-# ---------- Endpoints ----------
-
-@app.get("/")
-def root():
-    return {
-        "status": "ok",
-        "message": "Ecount chatbot is running. Visit /docs for the API, or POST /chat."
-    }
-
-@app.get("/health")
-def health():
-    return {"status": "ok", "products_loaded": len(products)}
-
-
-@app.post("/chat")
-def chat(req: ChatRequest):
-    text = req.message
+def generate_reply(text: str) -> str:
+    """From user text → fuzzy match → Ecount price & stock → reply string."""
 
     # Find something that looks like a model/item code in the message
     m = re.search(r"[A-Za-z0-9\-]{4,}", text)
     if not m:
-        return {"reply": "กรุณาพิมพ์รหัสสินค้าหรือรุ่น เช่น MY2N24VDC หรือ 2961105"}
+        return "กรุณาพิมพ์รหัสสินค้าหรือรุ่น เช่น MY2N24VDC หรือ 2961105"
 
     query_model = m.group()
     product, score = find_best_product(query_model)
 
     if not product or score < 70:
-        return {
-            "reply": (
-                f"ยังไม่พบรุ่นใกล้เคียงกับ '{query_model}' "
-                f"(score={score:.1f}) รบกวนตรวจสอบรหัสอีกครั้งครับ"
-            )
-        }
+        return (
+            f"ยังไม่พบรุ่นใกล้เคียงกับ '{query_model}' "
+            f"(score={score:.1f}) รบกวนตรวจสอบรหัสอีกครั้งครับ"
+        )
 
     # Extract info from CSV row
     item_code = product.get("ITEM_CODE", "")
@@ -246,9 +219,37 @@ def chat(req: ChatRequest):
         f"🔹 รายละเอียด: {spec}\n"
         f"🔹 หน่วยขาย: {unit}\n"
         f"🔹 ราคา: {price_text} ต่อ {unit}\n"
-        f"🔹 สต็อกคงเหลือ: {stock_qty} {unit}\n"
+        f"🔹 สต๊อกคงเหลือ: {stock_qty} {unit}\n"
     )
 
+    return reply
+# ---------- Load CSV at startup ----------
+load_products()
+
+# ---------- API models ----------
+
+class ChatRequest(BaseModel):
+    message: str
+
+
+# ---------- Endpoints ----------
+
+@app.get("/")
+def root():
+    return {
+        "status": "ok",
+        "message": "Ecount chatbot is running. Visit /docs for the API, or POST /chat."
+    }
+
+@app.get("/health")
+def health():
+    return {"status": "ok", "products_loaded": len(products)}
+
+
+@app.post("/chat")
+def chat(req: ChatRequest):
+    reply = generate_reply(req.message)
+    return {"reply": reply}
   
 @app.post("/line-webhook")
 async def line_webhook(request: Request):
