@@ -1,4 +1,4 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from pydantic import BaseModel
 from rapidfuzz import process, fuzz
 import csv
@@ -248,5 +248,13 @@ def chat(req: ChatRequest):
         f"🔹 ราคา: {price_text} ต่อ {unit}\n"
         f"🔹 สต็อกคงเหลือ: {stock_qty} {unit}\n"
     )
+
+  
+@app.post("/line-webhook")
+async def line_webhook(request: Request):
+    # For now we only log the body and always return 200 OK
+    body = await request.body()
+    print("LINE webhook body:", body.decode("utf-8"))
+    return "OK"
 
     return {"reply": reply}
